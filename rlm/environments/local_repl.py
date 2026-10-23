@@ -549,13 +549,6 @@ class LocalREPL(NonIsolatedEnv):
             elif name == "history" and self.compaction:
                 self.locals["history"] = self._compaction_history
 
-    @contextmanager
-    def _execution_context(self):
-        """Protect process-global cwd and output capture across LocalREPL instances."""
-        with _LOCAL_REPL_EXECUTION_LOCK:
-            with self._capture_output() as output, self._temp_cwd():
-                yield output
-
     def execute_code(self, code: str) -> REPLResult:
         """Execute code in the persistent namespace and return result."""
         start_time = time.perf_counter()
@@ -563,7 +556,11 @@ class LocalREPL(NonIsolatedEnv):
         # Clear pending LLM calls from previous execution
         self._pending_llm_calls = []
 
-        with self._execution_context() as (stdout_buf, stderr_buf):
+        with (
+            _LOCAL_REPL_EXECUTION_LOCK,
+            self._capture_output() as (stdout_buf, stderr_buf),
+            self._temp_cwd(),
+        ):
             try:
                 combined = {**self.globals, **self.locals}
                 exec(code, combined, combined)
